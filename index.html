@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sequenciador de Peptídeos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+img{max-width:100%}
+[hidden]{display:none!important}
+
+/* Layout: faixa cerceta no topo; painel de controles à esquerda, espectro + resultados à direita; empilha no celular */
+:root{
+  --bg:#EEF8F4; --surface:#FFFFFF; --surface-2:#E0F3EC; --ink:#0C3337; --muted:#4D6E6E; --line:#C6E2DA;
+  --band:#0A4C50; --band-ink:#E6FBF3; --teal:#0B7A7E; --teal-strong:#075C60; --mint:#3FBF8F; --mint-soft:#CDF1E2;
+  --profile:#A3BFBC; --thresh:#C2622F; --sel:rgba(63,191,143,.18);
+  --f-display:"Bricolage Grotesque", "Trebuchet MS", system-ui, sans-serif;
+  --f-body:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#081D20; --surface:#0E2A2E; --surface-2:#123538; --ink:#DAF2EB; --muted:#8CB2AC; --line:#1D4649;
+  --band:#06292C; --band-ink:#C9F5E4; --teal:#3EC7C2; --teal-strong:#86E3DD; --mint:#77E2B6; --mint-soft:#15413A;
+  --profile:#3D6462; --thresh:#F0A06F; --sel:rgba(119,226,182,.16); color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#081D20; --surface:#0E2A2E; --surface-2:#123538; --ink:#DAF2EB; --muted:#8CB2AC; --line:#1D4649;
+  --band:#06292C; --band-ink:#C9F5E4; --teal:#3EC7C2; --teal-strong:#86E3DD; --mint:#77E2B6; --mint-soft:#15413A;
+  --profile:#3D6462; --thresh:#F0A06F; --sel:rgba(119,226,182,.16); color-scheme:dark }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:1240px;margin:0 auto;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px))}
+header.band{background:var(--band);color:var(--band-ink)}
+header .wrap{padding-block:22px 20px;display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{font-family:var(--f-display);font-weight:700;font-size:clamp(1.5rem,3.2vw,2.1rem);line-height:1.1;margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1 span{color:var(--mint)}
+header p{margin:4px 0 0;opacity:.85;max-width:60ch}
+.ions{font-family:var(--f-mono);font-size:12px;letter-spacing:.06em;display:flex;gap:6px;flex-wrap:wrap}
+.ions b{font-weight:500;padding:3px 8px;border-radius:999px;border:1px solid color-mix(in srgb, var(--mint) 55%, transparent);color:var(--band-ink)}
+
+main .wrap{padding-block:22px 40px;display:grid;grid-template-columns:300px minmax(0,1fr);gap:22px;align-items:start}
+@media (max-width:860px){ main .wrap{grid-template-columns:minmax(0,1fr)} }
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:18px}
+aside.panel{position:sticky;top:calc(env(safe-area-inset-top, 0px) + 12px)}
+@media (max-width:860px){ aside.panel{position:static} }
+.label{font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+
+.drop{display:block;position:relative;overflow:hidden;border:1.5px dashed var(--teal);border-radius:8px;padding:16px 12px;text-align:center;background:var(--surface-2);cursor:pointer;transition:background .15s}
+.drop:hover,.drop.over{background:var(--mint-soft)}
+.drop:focus-within{outline:2px solid var(--mint);outline-offset:2px}
+.drop strong{color:var(--teal-strong);display:block;font-weight:600}
+.drop small{color:var(--muted);font-size:12.5px}
+.drop input{position:absolute;width:1px;height:1px;opacity:0}
+
+.files{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.files li{display:flex;align-items:center;gap:6px}
+.files button.pick{flex:1;min-width:0;text-align:left;font:inherit;font-size:13.5px;padding:7px 10px;border-radius:6px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.files button.pick[aria-current="true"]{background:var(--teal);border-color:var(--teal);color:var(--surface)}
+.files .tag{font-size:10.5px;font-family:var(--f-mono);padding:1px 6px;border-radius:999px;background:var(--mint-soft);color:var(--teal-strong);margin-left:6px}
+.files button.pick[aria-current="true"] .tag{background:var(--mint);color:var(--band)}
+.files button.x{font:inherit;width:28px;height:30px;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;font-size:17px;line-height:1}
+.files button.x:hover{background:var(--surface-2);color:var(--ink)}
+
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-weight:500;font-size:14px}
+.field small{color:var(--muted);font-size:12.5px}
+input[type=number]{font:inherit;font-family:var(--f-mono);font-size:15px;padding:8px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:100%}
+input[type=number]:focus{outline:2px solid var(--mint);outline-offset:1px;border-color:var(--teal)}
+
+.filter{border-top:1px solid var(--line);padding-top:14px;display:flex;flex-direction:column;gap:10px}
+.switch{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;font-weight:500;font-size:14px}
+.switch input{position:absolute;opacity:0;width:1px;height:1px}
+.switch .track{width:40px;height:22px;border-radius:999px;background:var(--line);position:relative;flex:none;transition:background .15s}
+.switch .track::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--surface);transition:transform .15s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.switch input:checked + .track{background:var(--teal)}
+.switch input:checked + .track::after{transform:translateX(18px)}
+.switch input:focus-visible + .track{outline:2px solid var(--mint);outline-offset:2px}
+.range{display:flex;align-items:center;gap:10px}
+.range input[type=range]{flex:1;accent-color:var(--teal);min-width:0}
+.range output{font-family:var(--f-mono);font-size:13px;min-width:44px;text-align:right;font-variant-numeric:tabular-nums}
+.dim{opacity:.45}
+.note{font-size:12.5px;color:var(--muted);margin:0}
+
+section.out{display:flex;flex-direction:column;gap:22px;min-width:0}
+.summary{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:baseline;font-size:14px;color:var(--muted)}
+.summary h2{font-family:var(--f-display);font-size:1.35rem;font-weight:700;color:var(--ink);margin:0;flex-basis:100%;text-wrap:balance;overflow-wrap:anywhere}
+.summary .num{font-family:var(--f-mono);color:var(--ink);font-variant-numeric:tabular-nums}
+.chart-card{padding:12px 12px 8px;gap:8px}
+.chart-top{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:center}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.btn{font:inherit;font-size:13px;font-weight:500;padding:6px 12px;border-radius:6px;border:1px solid var(--teal);background:transparent;color:var(--teal-strong);cursor:pointer}
+.btn:hover{background:var(--mint-soft)}
+.btn:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+.btn.solid{background:var(--teal);color:var(--surface)}
+.btn.solid:hover{background:var(--teal-strong)}
+.canvas-box{position:relative;width:100%;height:330px}
+canvas{display:block;width:100%;height:100%;touch-action:pan-y;cursor:crosshair}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--bg);font-family:var(--f-mono);font-size:12px;padding:6px 8px;border-radius:6px;white-space:nowrap;line-height:1.45;transform:translate(-50%,-100%);margin-top:-10px}
+.hint{font-size:12px;color:var(--muted);margin:0}
+
+.results{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.results .panel{gap:10px}
+.results h3,.peaks h3{font-family:var(--f-display);font-weight:700;font-size:1.05rem;margin:0}
+.results h3 small,.peaks h3 small{font-family:var(--f-body);font-weight:400;font-size:12.5px;color:var(--muted);margin-left:6px}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.n,th.n{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.aa{display:inline-block;min-width:2.1em;text-align:center;font-family:var(--f-mono);font-weight:500;padding:1px 7px;border-radius:5px;background:var(--mint-soft);color:var(--teal-strong)}
+.seq{font-family:var(--f-mono);font-weight:500;color:var(--teal-strong);letter-spacing:.04em}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chips span{font-family:var(--f-mono);font-size:12.5px;padding:1px 7px;border-radius:5px;border:1px solid var(--line)}
+.empty{color:var(--muted);font-size:13.5px;margin:0}
+.badge-snr{font-family:var(--f-mono);font-size:11.5px;color:var(--muted)}
+
+code{font-family:var(--f-mono);font-size:.92em}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+.file-view{display:flex;flex-direction:column;gap:22px;min-width:0}
+.empty-state{align-items:flex-start;gap:12px;padding:28px 24px;border-style:dashed;border-color:var(--teal)}
+.empty-state h2{font-family:var(--f-display);font-weight:700;font-size:1.35rem;margin:0}
+.empty-state p{margin:0;color:var(--muted);max-width:60ch}
+label.btn{display:inline-block}
+.common{border-color:var(--teal);background:linear-gradient(var(--mint-soft), var(--mint-soft)) top/100% 4px no-repeat, var(--surface);gap:14px}
+.common-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}
+.common-head h2{font-family:var(--f-display);font-weight:700;font-size:1.35rem;margin:0;text-wrap:balance}
+.common-head p{margin:0;color:var(--muted);font-size:13.5px}
+.common-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.common-grid > div{min-width:0;display:flex;flex-direction:column;gap:8px}
+.common-grid h3{font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0}
+.big{display:flex;flex-wrap:wrap;gap:6px}
+.big span{font-family:var(--f-mono);font-weight:500;font-size:14px;padding:4px 10px;border-radius:6px;background:var(--teal);color:var(--surface)}
+.big span em{font-style:normal;opacity:.75;margin-left:4px;font-size:12px}
+.partial{border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:8px}
+.partial .chips span em{font-style:normal;color:var(--muted);margin-left:4px}
+.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom, 0px) + 18px);transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13.5px;z-index:20}
+.err{color:var(--thresh);font-size:13px;margin:8px 0 0}
+@media (prefers-reduced-motion: reduce){ *{transition:none!important} }
+</style>
+</head>
+<body>
+
+<header class="band">
+  <div class="wrap">
+    <div>
+      <h1>Sequenciador de <span>Peptídeos</span></h1>
+      <p>Carregue espectros CID (m/z ⇥ intensidade) e identifique íons y1, b1 e b2 de di e tripeptídeos.</p>
+    </div>
+    <div class="ions" aria-hidden="true"><b>y1</b><b>b1</b><b>b2</b><b>S/N</b></div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <aside class="panel" aria-label="Controles">
+      <div>
+        <p class="label">Arquivos</p>
+        <label class="drop" id="drop">
+          <input type="file" id="fileInput" multiple accept=".txt,.csv,.tsv,.xy,.dat,text/plain">
+          <strong>Escolher arquivos</strong>
+          <small>ou arraste aqui · .txt com duas colunas</small>
+        </label>
+        <p class="err" id="err" hidden></p>
+        <ul class="files" id="fileList"></ul>
+      </div>
+
+      <div class="field">
+        <label for="precursor">Massa do precursor (m/z)</label>
+        <input type="number" id="precursor" step="any" inputmode="decimal">
+        <small>O valor que o script pedia no <code>input()</code>. Lido do nome do arquivo quando há “CID-370”.</small>
+      </div>
+
+      <div class="filter">
+        <label class="switch" for="snOn">Filtro sinal/ruído
+          <input type="checkbox" id="snOn" checked><span class="track"></span>
+        </label>
+        <div class="range" id="snRow">
+          <input type="range" id="sn" min="1" max="30" step="0.5" value="3" aria-label="Razão S/N mínima">
+          <output id="snOut">≥ 3</output>
+        </div>
+        <p class="note" id="noiseNote"></p>
+      </div>
+
+      <div class="filter">
+        <label class="switch" for="bpiOn">Filtro BPI mínimo
+          <input type="checkbox" id="bpiOn"><span class="track"></span>
+        </label>
+        <div class="range dim" id="bpiRow">
+          <input type="range" id="bpi" min="0.5" max="50" step="0.5" value="15" aria-label="BPI mínimo em porcentagem">
+          <output id="bpiOut">15%</output>
+        </div>
+        <p class="note">O corte de 15% do seu script, agora aplicado antes da identificação.</p>
+      </div>
+    </aside>
+
+    <section class="out">
+      <div class="panel common" id="common" hidden>
+        <div class="common-head">
+          <h2>Em todos os arquivos</h2>
+          <p id="commonSub"></p>
+        </div>
+        <div class="common-grid" id="commonBox"></div>
+        <div class="tbl" id="presenceBox"></div>
+      </div>
+
+      <div class="panel empty-state" id="emptyView">
+        <h2>Nenhum arquivo carregado</h2>
+        <p>Envie um ou mais espectros CID em .txt, com m/z e intensidade separados por tabulação. Os resultados de y1, b1 e b2 aparecem aqui, e com dois ou mais arquivos aparecem também as combinações em comum.</p>
+        <label class="btn solid" for="fileInput">Escolher arquivos</label>
+      </div>
+
+      <div class="file-view" id="fileView" hidden>
+      <div class="summary" id="summary"></div>
+
+      <div class="panel chart-card">
+        <div class="chart-top">
+          <div class="legend">
+            <span><i style="background:var(--profile)"></i>espectro completo</span>
+            <span><i style="background:var(--teal)"></i>pontos aceitos</span>
+            <span><i style="background:var(--thresh)"></i>limiar</span>
+            <span><i style="background:var(--mint)"></i>y1</span>
+          </div>
+          <div class="btns">
+            <button class="btn" id="resetZoom" type="button">Ver espectro inteiro</button>
+            <button class="btn solid" id="copyBtn" type="button">Copiar resultados</button>
+          </div>
+        </div>
+        <div class="canvas-box" id="box">
+          <canvas id="cv" aria-label="Espectro de massas"></canvas>
+          <div class="tip" id="tip" hidden></div>
+        </div>
+        <p class="hint">Arraste na horizontal para ampliar uma faixa de m/z. Duplo clique volta ao espectro inteiro.</p>
+      </div>
+
+      <div class="results">
+        <div class="panel">
+          <h3>y1 <small>aminoácido C-terminal</small></h3>
+          <div id="y1Box"></div>
+        </div>
+        <div class="panel">
+          <h3>b1 <small>precursor − y1</small></h3>
+          <div id="b1Box"></div>
+        </div>
+        <div class="panel">
+          <h3>b2 <small>precursor − y1 + 1</small></h3>
+          <div id="b2Box"></div>
+        </div>
+      </div>
+      </div>
+    </section>
+  </div>
+</main>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+
+const AA = [[75,"G"],[89,"A"],[105,"S"],[115,"P"],[117,"V"],[119,"T"],[121,"C"],[131,"I/L"],[132,"N"],[133,"D"],[146,"Q/K"],[147,"E"],[149,"M"],[155,"H"],[165,"F/M*"],[174,"R"],[180,"C**"],[181,"Y"],[185,"W"]];
+const RES = [[57,"G"],[71,"A"],[87,"S"],[97,"P"],[99,"V"],[101,"T"],[103,"C"],[113,"L/I"],[114,"N"],[115,"D"],[128,"Q/K"],[129,"E"],[131,"M"],[137,"H"],[147,"F"],[156,"R"],[163,"Y"],[186,"W"]];
+const AA_MAP = new Map(AA);
+const RES_MAP = new Map(RES);
+const DI = new Map();
+for (const [m1,n1] of AA) for (const [m2,n2] of AA) {
+  const k = m1 + m2 - 35;
+  if (!DI.has(k)) DI.set(k, []);
+  DI.get(k).push(n1 + n2);
+}
+
+const $ = id => document.getElementById(id);
+const fmt = (v, d=1) => Number(v).toLocaleString("pt-BR", {minimumFractionDigits:d, maximumFractionDigits:d});
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+const state = { files: [], active: 0, snOn: true, sn: 3, bpiOn: false, bpi: 15, view: null };
+let A = null; // análise atual
+
+function parseNum(s){ s = s.trim().replace(",", "."); return /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(s) ? Number(s) : NaN; }
+
+function parseFile(text, fname, sample=false){
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const header = [], m = [], I = [];
+  for (const line of lines){
+    let parts = line.split("\t");
+    if (parts.length < 2) parts = line.split(/[;\s]+/);
+    if (parts.length < 2 && !line.includes(".")) parts = line.split(",");
+    const a = parts.length >= 2 ? parseNum(parts[0]) : NaN;
+    const b = parts.length >= 2 ? parseNum(parts[1]) : NaN;
+    if (isFinite(a) && isFinite(b)) { m.push(a); I.push(b); }
+    else if (!m.length) header.push(line);
+  }
+  if (m.length < 5) throw new Error(`“${fname}” não tem colunas numéricas de m/z e intensidade.`);
+  const base = fname.replace(/\.[^.]+$/, "");
+  const name = header[0] || base;
+  const desc = header[1] || "";
+  let p = null;
+  const hit = (header.join(" ") + " " + fname).match(/CID[\s_-]*(\d+(?:[.,]\d+)?)/i);
+  if (hit) p = Number(hit[1].replace(",", "."));
+  if (p == null){ let bi = 0; for (let k=1;k<I.length;k++) if (I[k] > I[bi]) bi = k; p = Math.round(m[bi]); }
+  return { fname, name, desc, m, I, p, sample };
+}
+
+function median(arr){
+  const s = Float64Array.from(arr).sort(); const n = s.length;
+  return n % 2 ? s[(n-1)/2] : (s[n/2-1] + s[n/2]) / 2;
+}
+
+function analyze(f){
+  const n = f.m.length;
+  let max = 0, sum = 0;
+  for (const v of f.I){ if (v > max) max = v; sum += v; }
+  let noise = median(f.I);
+  if (!(noise > 0)) { const pos = f.I.filter(v => v > 0); noise = pos.length ? median(pos) : 1; }
+  const bpi = f.I.map(v => max ? v / max * 100 : 0);
+  const tic = f.I.map(v => sum ? v / sum * 100 : 0);
+  const snr = f.I.map(v => v / noise);
+  const keep = new Uint8Array(n);
+  let kept = 0;
+  for (let k=0;k<n;k++){
+    const ok = (!state.snOn || snr[k] >= state.sn) && (!state.bpiOn || bpi[k] >= state.bpi);
+    if (ok){ keep[k] = 1; kept++; }
+  }
+  // y1 — mesma regra do script: int(massa) == massa do aminoácido, chave = massa + 1
+  const y1 = new Map();
+  for (let k=0;k<n;k++){
+    if (!keep[k]) continue;
+    const t = Math.trunc(f.m[k]);
+    if (AA_MAP.has(t)){
+      if (!y1.has(t)) y1.set(t, { aa: t, key: t + 1, name: AA_MAP.get(t), best: k, count: 0 });
+      const e = y1.get(t); e.count++; if (f.I[k] > f.I[e.best]) e.best = k;
+    }
+  }
+  const y1List = [...y1.values()].sort((a,b) => a.aa - b.aa);
+  const P = Number(f.p);
+  const b1 = [], b2 = [];
+  for (const e of y1List){
+    const b1m = P - e.key;
+    if (RES_MAP.has(b1m)) b1.push({ mass: b1m, res: RES_MAP.get(b1m), y: e, seq: RES_MAP.get(b1m) + e.name });
+    const b2m = b1m + 1;
+    if (DI.has(b2m)) b2.push({ mass: b2m, combos: DI.get(b2m), y: e });
+  }
+  return { f, n, max, sum, noise, bpi, tic, snr, keep, kept, y1List, b1, b2, P };
+}
+
+// combinações de um arquivo, por grupo
+function combos(a){
+  return {
+    y1: new Set(a.y1List.map(e => e.name)),
+    b1: new Set(a.b1.map(b => b.seq)),
+    b2: new Set(a.b2.flatMap(b => b.combos.map(c => c + " + " + b.y.name)))
+  };
+}
+const GROUPS = [["y1","y1 · aminoácido"],["b1","b1 · dipeptídeo"],["b2","b2 · par + y1"]];
+function compareFiles(){
+  const per = state.files.map(f => combos(f === A.f ? A : analyze(f)));
+  const N = per.length, out = {};
+  for (const [g] of GROUPS){
+    const count = new Map();
+    for (const c of per) for (const v of c[g]) count.set(v, (count.get(v) || 0) + 1);
+    const all = [...count].filter(([,k]) => k === N).map(([v]) => v).sort();
+    const some = [...count].filter(([,k]) => k > 1 && k < N).sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0]));
+    out[g] = { all, some };
+  }
+  return { N, out };
+}
+
+/* ---------- renderização ---------- */
+function renderFiles(){
+  const ul = $("fileList");
+  ul.innerHTML = state.files.map((f,i) => `
+    <li><button class="pick" type="button" data-i="${i}" aria-current="${i===state.active}" title="${esc(f.fname)}">${esc(f.fname)}${f.sample ? '<span class="tag">exemplo</span>' : ''}</button>
+    <button class="x" type="button" data-rm="${i}" aria-label="Remover ${esc(f.fname)}">×</button></li>`).join("");
+}
+
+function renderSummary(){
+  const f = A.f;
+  $("summary").innerHTML = `
+    <h2>${esc(f.name)}</h2>
+    ${f.desc ? `<span>${esc(f.desc)}</span>` : ""}
+    <span><span class="num">${A.kept.toLocaleString("pt-BR")}</span> de <span class="num">${A.n.toLocaleString("pt-BR")}</span> pontos usados</span>
+    <span>pico base <span class="num">${fmt(f.m[A.f.I.indexOf(A.max)])}</span></span>
+    <span>precursor <span class="num">${isFinite(A.P) ? fmt(A.P, Number.isInteger(A.P)?0:2) : "—"}</span></span>`;
+  $("noiseNote").textContent = `Ruído estimado (mediana): ${fmt(A.noise, 2)}. Limiar atual: intensidade ≥ ${fmt(A.noise * state.sn, 1)}.`;
+}
+
+function snrTxt(k){ return `S/N ${fmt(A.snr[k], 1)}`; }
+
+function renderResults(){
+  const f = A.f;
+  $("y1Box").innerHTML = A.y1List.length ? `<div class="tbl"><table>
+    <thead><tr><th>AA</th><th class="n">y1</th><th class="n">m/z lido</th><th class="n">BPI</th></tr></thead><tbody>
+    ${A.y1List.map(e => `<tr><td><span class="aa">${esc(e.name)}</span></td><td class="n">${e.key}</td>
+      <td class="n">${fmt(f.m[e.best])}<br><span class="badge-snr">${snrTxt(e.best)}</span></td><td class="n">${fmt(A.bpi[e.best],2)}%</td></tr>`).join("")}
+    </tbody></table></div>` : `<p class="empty">Nenhum y1 entre os pontos aceitos. Tente baixar o limiar de S/N.</p>`;
+
+  $("b1Box").innerHTML = !isFinite(A.P) ? `<p class="empty">Informe a massa do precursor.</p>` :
+    A.b1.length ? `<div class="tbl"><table><thead><tr><th>Dipeptídeo</th><th class="n">b1</th><th class="n">y1</th></tr></thead><tbody>
+    ${A.b1.map(b => `<tr><td class="seq">${esc(b.seq)}</td><td class="n">${fmt(b.mass,0)}</td><td class="n">${b.y.key}</td></tr>`).join("")}
+    </tbody></table></div>` : `<p class="empty">Nenhuma massa precursor − y1 coincide com um resíduo.</p>`;
+
+  $("b2Box").innerHTML = !isFinite(A.P) ? `<p class="empty">Informe a massa do precursor.</p>` :
+    A.b2.length ? `<div class="tbl"><table><thead><tr><th class="n">b2</th><th>Pares possíveis</th><th>+ y1</th></tr></thead><tbody>
+    ${A.b2.map(b => `<tr><td class="n">${fmt(b.mass,0)}</td><td><div class="chips">${b.combos.map(c=>`<span>${esc(c)}</span>`).join("")}</div></td>
+      <td><span class="aa">${esc(b.y.name)}</span></td></tr>`).join("")}
+    </tbody></table></div>` : `<p class="empty">Nenhuma massa precursor − y1 + 1 coincide com um dipeptídeo.</p>`;
+}
+
+let CMP = null;
+function renderCommon(){
+  const box = $("common");
+  if (state.files.length < 2){ box.hidden = true; CMP = null; return; }
+  CMP = compareFiles();
+  const { N, out } = CMP;
+  box.hidden = false;
+  $("commonSub").textContent = `${N} arquivos comparados, cada um com o seu precursor e os filtros atuais.`;
+  $("commonBox").innerHTML = GROUPS.map(([g, lab]) => `<div><h3>${lab}</h3>${
+    out[g].all.length ? `<div class="big">${out[g].all.map(v => `<span>${esc(v)}</span>`).join("")}</div>`
+                      : `<p class="empty">Nenhuma combinação em comum.</p>`}</div>`).join("");
+  const partial = GROUPS.filter(([g]) => out[g].some.length);
+  $("presenceBox").innerHTML = partial.length ? `<div class="partial"><h3 class="label" style="margin:0">Em parte dos arquivos</h3>${
+    partial.map(([g, lab]) => `<div class="chips"><span style="border:0;padding-left:0;color:var(--muted)">${g}</span>${
+      out[g].some.map(([v,k]) => `<span>${esc(v)}<em>${k}/${N}</em></span>`).join("")}</div>`).join("")}</div>` : "";
+}
+
+/* ---------- gráfico ---------- */
+const cv = $("cv"), box = $("box"), tip = $("tip");
+const ctx = cv.getContext("2d");
+const PAD = { l: 50, r: 14, t: 26, b: 34 };
+let drag = null, hoverX = null;
+
+function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function niceStep(range, target){
+  const raw = range / target, p = Math.pow(10, Math.floor(Math.log10(raw))), r = raw / p;
+  return (r < 1.5 ? 1 : r < 3 ? 2 : r < 7 ? 5 : 10) * p;
+}
+function view(){
+  const f = A.f; return state.view || [f.m[0], f.m[f.m.length-1]];
+}
+function geom(){
+  const W = box.clientWidth, H = box.clientHeight;
+  const [x0, x1] = view();
+  const f = A.f; let ymax = 0;
+  for (let k=0;k<A.n;k++){ const x=f.m[k]; if (x>=x0 && x<=x1 && A.bpi[k]>ymax) ymax = A.bpi[k]; }
+  ymax = Math.max(ymax * 1.12, 0.5);
+  const X = x => PAD.l + (x - x0) / (x1 - x0) * (W - PAD.l - PAD.r);
+  const Y = y => H - PAD.b - y / ymax * (H - PAD.t - PAD.b);
+  const invX = px => x0 + (px - PAD.l) / (W - PAD.l - PAD.r) * (x1 - x0);
+  return { W, H, x0, x1, ymax, X, Y, invX };
+}
+
+function draw(){
+  if (!A) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = box.clientWidth, H = box.clientHeight;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+  const g = geom(), f = A.f;
+  const C = { ink: css("--ink"), muted: css("--muted"), line: css("--line"), profile: css("--profile"), teal: css("--teal"),
+              mint: css("--mint"), thresh: css("--thresh"), sel: css("--sel"), bg: css("--surface") };
+  const mono = '11px "IBM Plex Mono", ui-monospace, monospace';
+  ctx.font = mono; ctx.textBaseline = "middle";
+
+  // grade e eixos
+  const ys = niceStep(g.ymax, 4);
+  ctx.strokeStyle = C.line; ctx.lineWidth = 1; ctx.fillStyle = C.muted; ctx.textAlign = "right";
+  for (let y=0; y<=g.ymax+1e-9; y+=ys){
+    const py = Math.round(g.Y(y)) + .5;
+    ctx.beginPath(); ctx.moveTo(PAD.l, py); ctx.lineTo(g.W - PAD.r, py); ctx.stroke();
+    ctx.fillText(fmt(y, ys < 1 ? 1 : 0) + "%", PAD.l - 6, py);
+  }
+  const xs = niceStep(g.x1 - g.x0, Math.max(3, Math.floor((g.W - PAD.l) / 80)));
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  for (let x = Math.ceil(g.x0 / xs) * xs; x <= g.x1 + 1e-9; x += xs){
+    const px = Math.round(g.X(x)) + .5;
+    ctx.beginPath(); ctx.moveTo(px, g.H - PAD.b); ctx.lineTo(px, g.H - PAD.b + 4); ctx.stroke();
+    ctx.fillText(fmt(x, xs < 1 ? 1 : 0), px, g.H - PAD.b + 7);
+  }
+  ctx.textAlign = "right"; ctx.fillText("m/z", g.W - PAD.r, g.H - 14);
+
+  ctx.save();
+  ctx.beginPath(); ctx.rect(PAD.l, 0, g.W - PAD.l - PAD.r, g.H - PAD.b + 1); ctx.clip();
+
+  // espectro completo
+  ctx.strokeStyle = C.profile; ctx.lineWidth = 1.2; ctx.beginPath();
+  let started = false;
+  for (let k=0;k<A.n;k++){
+    const x = f.m[k]; if (x < g.x0 - 1 || x > g.x1 + 1) continue;
+    const px = g.X(x), py = g.Y(A.bpi[k]);
+    started ? ctx.lineTo(px, py) : (ctx.moveTo(px, py), started = true);
+  }
+  ctx.stroke();
+
+  // pontos aceitos
+  ctx.strokeStyle = C.teal; ctx.lineWidth = 1.4; ctx.beginPath();
+  const base = g.Y(0);
+  for (let k=0;k<A.n;k++){
+    if (!A.keep[k]) continue; const x = f.m[k]; if (x < g.x0 || x > g.x1) continue;
+    const px = Math.round(g.X(x)) + .5; ctx.moveTo(px, base); ctx.lineTo(px, g.Y(A.bpi[k]));
+  }
+  ctx.stroke();
+
+  // limiares
+  ctx.setLineDash([5,4]); ctx.strokeStyle = C.thresh; ctx.lineWidth = 1.2;
+  const lines = [];
+  if (state.snOn) lines.push([A.noise * state.sn / A.max * 100, `S/N ${fmt(state.sn,1)}`]);
+  if (state.bpiOn) lines.push([state.bpi, `BPI ${fmt(state.bpi,1)}%`]);
+  ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillStyle = C.thresh;
+  for (const [y, lab] of lines){
+    if (y > g.ymax) continue;
+    const py = Math.round(g.Y(y)) + .5;
+    ctx.beginPath(); ctx.moveTo(PAD.l, py); ctx.lineTo(g.W - PAD.r, py); ctx.stroke();
+    ctx.fillText(lab, PAD.l + 6, py - 2);
+  }
+  // precursor
+  if (isFinite(A.P) && A.P >= g.x0 && A.P <= g.x1){
+    const px = Math.round(g.X(A.P)) + .5;
+    ctx.strokeStyle = C.muted; ctx.beginPath(); ctx.moveTo(px, PAD.t - 8); ctx.lineTo(px, base); ctx.stroke();
+    ctx.fillStyle = C.muted; ctx.textAlign = px > g.W - 90 ? "right" : "left";
+    ctx.fillText("precursor", px + (ctx.textAlign === "left" ? 5 : -5), PAD.t - 4);
+  }
+  ctx.setLineDash([]);
+
+  // rótulos y1
+  ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+  ctx.font = '600 11px "IBM Plex Mono", ui-monospace, monospace';
+  for (const e of A.y1List){
+    const k = e.best, x = f.m[k]; if (x < g.x0 || x > g.x1) continue;
+    const px = g.X(x), py = g.Y(A.bpi[k]);
+    ctx.fillStyle = C.mint; ctx.beginPath(); ctx.arc(px, py, 3.5, 0, Math.PI*2); ctx.fill();
+    const label = e.name, tw = ctx.measureText(label).width + 8, ly = Math.max(py - 8, 16);
+    ctx.fillStyle = C.bg; ctx.fillRect(px - tw/2, ly - 15, tw, 15);
+    ctx.fillStyle = C.ink; ctx.fillText(label, px, ly - 1);
+  }
+  ctx.restore();
+
+  // seleção de zoom
+  if (drag && Math.abs(drag.x1 - drag.x0) > 2){
+    ctx.fillStyle = C.sel;
+    ctx.fillRect(Math.min(drag.x0, drag.x1), PAD.t - 10, Math.abs(drag.x1 - drag.x0), g.H - PAD.b - PAD.t + 10);
+  }
+  // cursor
+  if (hoverX != null && !drag){
+    const k = nearest(hoverX);
+    if (k >= 0){
+      const px = g.X(f.m[k]), py = g.Y(A.bpi[k]);
+      ctx.strokeStyle = C.ink; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(px, py, 4.5, 0, Math.PI*2); ctx.stroke();
+    }
+  }
+}
+
+function nearest(px){
+  const g = geom(), x = g.invX(px), f = A.f;
+  let lo = 0, hi = A.n - 1;
+  while (hi - lo > 1){ const mid = (lo + hi) >> 1; f.m[mid] < x ? lo = mid : hi = mid; }
+  // entre pontos com m/z igual (perfil), pega o mais intenso dentro de ±1 px
+  let best = Math.abs(f.m[lo]-x) <= Math.abs(f.m[hi]-x) ? lo : hi;
+  const tol = (g.x1 - g.x0) / (g.W - PAD.l - PAD.r) * 3;
+  for (let k = Math.max(0, best-6); k <= Math.min(A.n-1, best+6); k++)
+    if (Math.abs(f.m[k]-x) <= tol && f.I[k] > f.I[best]) best = k;
+  return f.m[best] >= g.x0 && f.m[best] <= g.x1 ? best : -1;
+}
+
+function showTip(px){
+  const k = nearest(px), f = A.f;
+  if (k < 0){ tip.hidden = true; return; }
+  const g = geom();
+  const t = Math.trunc(f.m[k]);
+  tip.innerHTML = `m/z ${fmt(f.m[k])} · I ${fmt(f.I[k],1)}<br>BPI ${fmt(A.bpi[k],2)}% · S/N ${fmt(A.snr[k],1)}<br>${A.keep[k] ? "aceito" : "filtrado"}${AA_MAP.has(t) && A.keep[k] ? " · y1 " + AA_MAP.get(t) : ""}`;
+  tip.hidden = false;
+  const x = Math.min(Math.max(g.X(f.m[k]), 80), g.W - 80);
+  tip.style.left = x + "px"; tip.style.top = Math.max(g.Y(A.bpi[k]), 60) + "px";
+}
+
+function localX(e){ const r = cv.getBoundingClientRect(); return e.clientX - r.left; }
+cv.addEventListener("pointerdown", e => { if (!A) return; drag = { x0: localX(e), x1: localX(e) }; cv.setPointerCapture(e.pointerId); tip.hidden = true; });
+cv.addEventListener("pointermove", e => {
+  if (!A) return;
+  const x = localX(e);
+  if (drag){ drag.x1 = x; draw(); return; }
+  hoverX = x; draw(); showTip(x);
+});
+cv.addEventListener("pointerup", e => {
+  if (!drag) return;
+  const g = geom();
+  if (Math.abs(drag.x1 - drag.x0) > 8){
+    let a = g.invX(Math.min(drag.x0, drag.x1)), b = g.invX(Math.max(drag.x0, drag.x1));
+    const f = A.f; a = Math.max(a, f.m[0]); b = Math.min(b, f.m[f.m.length-1]);
+    if (b - a > 0.5) state.view = [a, b];
+  }
+  drag = null; draw();
+});
+cv.addEventListener("pointercancel", () => { drag = null; draw(); });
+cv.addEventListener("pointerleave", () => { hoverX = null; tip.hidden = true; if (!drag) draw(); });
+cv.addEventListener("dblclick", () => { state.view = null; draw(); });
+$("resetZoom").addEventListener("click", () => { state.view = null; draw(); });
+new ResizeObserver(() => draw()).observe(box);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+/* ---------- fluxo ---------- */
+function refresh(){
+  const f = state.files[state.active];
+  $("emptyView").hidden = !!f; $("fileView").hidden = !f; $("precursor").disabled = !f;
+  if (!f){ A = null; CMP = null; renderFiles(); $("common").hidden = true; return; }
+  A = analyze(f);
+  renderFiles(); renderSummary(); renderResults(); renderCommon(); draw();
+}
+function select(i){
+  state.active = i; state.view = null;
+  $("precursor").value = state.files[i].p ?? "";
+  refresh();
+}
+function addFiles(list){
+  const err = $("err"); err.hidden = true;
+  const problems = [];
+  let pending = list.length, firstNew = state.files.length;
+  for (const file of list){
+    const r = new FileReader();
+    r.onload = () => {
+      try { state.files.push(parseFile(String(r.result), file.name)); }
+      catch (e) { problems.push(e.message); }
+      if (--pending === 0){
+        if (problems.length){ err.textContent = problems.join(" "); err.hidden = false; }
+        if (state.files.length) select(Math.max(0, state.files.length - 1));
+      }
+    };
+    r.onerror = () => { problems.push(`Não foi possível ler “${file.name}”.`); if (--pending === 0){ err.textContent = problems.join(" "); err.hidden = false; } };
+    r.readAsText(file);
+  }
+}
+
+$("fileInput").addEventListener("change", e => { if (e.target.files.length) addFiles([...e.target.files]); e.target.value = ""; });
+const drop = $("drop");
+["dragenter","dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave","drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => { if (e.dataTransfer.files.length) addFiles([...e.dataTransfer.files]); });
+document.addEventListener("dragover", e => e.preventDefault());
+document.addEventListener("drop", e => { e.preventDefault(); if (e.dataTransfer.files.length) addFiles([...e.dataTransfer.files]); });
+
+$("fileList").addEventListener("click", e => {
+  const pick = e.target.closest("[data-i]"), rm = e.target.closest("[data-rm]");
+  if (pick) select(Number(pick.dataset.i));
+  if (rm){
+    const i = Number(rm.dataset.rm); state.files.splice(i, 1);
+    if (!state.files.length){ state.active = 0; $("precursor").value = ""; refresh(); return; }
+    select(Math.min(state.active > i ? state.active - 1 : state.active, state.files.length - 1));
+  }
+});
+
+$("precursor").addEventListener("input", e => {
+  const v = e.target.value.trim();
+  if (!state.files[state.active]) return;
+  state.files[state.active].p = v === "" ? NaN : Number(v.replace(",", "."));
+  refresh();
+});
+function syncFilters(){
+  state.snOn = $("snOn").checked; state.sn = Number($("sn").value);
+  state.bpiOn = $("bpiOn").checked; state.bpi = Number($("bpi").value);
+  $("snOut").textContent = "≥ " + fmt(state.sn, state.sn % 1 ? 1 : 0);
+  $("bpiOut").textContent = fmt(state.bpi, state.bpi % 1 ? 1 : 0) + "%";
+  $("snRow").classList.toggle("dim", !state.snOn); $("sn").disabled = !state.snOn;
+  $("bpiRow").classList.toggle("dim", !state.bpiOn); $("bpi").disabled = !state.bpiOn;
+  try { localStorage.setItem("seqpep-filtros", JSON.stringify({snOn:state.snOn, sn:state.sn, bpiOn:state.bpiOn, bpi:state.bpi})); } catch(_) {}
+  refresh();
+}
+["snOn","sn","bpiOn","bpi"].forEach(id => $(id).addEventListener("input", syncFilters));
+
+function toast(msg){ const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 1800); }
+$("copyBtn").addEventListener("click", () => {
+  if (!A) return;
+  const f = A.f;
+  const txt = [
+    `nome do composto: ${f.name}`, f.desc ? `descricao: ${f.desc}` : null,
+    `precursor: ${A.P}`,
+    `filtro S/N: ${state.snOn ? "ligado (>= " + state.sn + ", ruido " + A.noise.toFixed(2) + ")" : "desligado"}`,
+    `filtro BPI: ${state.bpiOn ? "ligado (>= " + state.bpi + "%)" : "desligado"}`,
+    `pontos usados: ${A.kept} de ${A.n}`,
+    `y1: {${A.y1List.map(e => `${e.key}: '${e.name}'`).join(", ")}}`,
+    `b1: {${A.b1.map(b => `${b.mass}: '${b.seq}'`).join(", ")}}`,
+    `b2: {${A.b2.map(b => `${b.mass}: '${b.combos.join("/")}' (y1 ${b.y.name})`).join(", ")}}`,
+    ...(CMP ? ["", `em todos os ${CMP.N} arquivos (${state.files.map(x => x.fname).join(", ")}):`,
+      ...GROUPS.map(([g]) => `${g}: ${CMP.out[g].all.join(", ") || "nenhuma"}`)] : [])
+  ].filter(v => v !== null).join("\n");
+  const fallback = () => { const ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); toast("Resultados copiados"); } catch(_) { toast("Selecione e copie manualmente"); } ta.remove(); };
+  try { navigator.clipboard.writeText(txt).then(() => toast("Resultados copiados"), fallback); } catch(_) { fallback(); }
+});
+
+// início: filtros salvos
+try { const s = JSON.parse(localStorage.getItem("seqpep-filtros") || "null");
+  if (s){ $("snOn").checked = !!s.snOn; $("sn").value = s.sn; $("bpiOn").checked = !!s.bpiOn; $("bpi").value = s.bpi; } } catch(_) {}
+syncFilters();
+</script>
+
+</body>
+</html>
